@@ -64,8 +64,9 @@ module Fog
             yield buf.read, nil, nil
           else
             object[:body] = buf.read
-            buf.unlink
           end
+
+          buf.close(true)
 
           object
         end
