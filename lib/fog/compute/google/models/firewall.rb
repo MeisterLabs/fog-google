@@ -8,8 +8,24 @@ module Fog
       class Firewall < Fog::Model
         identity :name
 
+        # Allowed ports in API format
+        #
+        # @example
+        # [
+        #   { :ip_protocol => "TCP",
+        #     :ports => ["201"] }
+        # ]
+        # @return [Array<Hash>]
         attribute :allowed
         attribute :creation_timestamp, :aliases => "creationTimestamp"
+        # Denied ports in API format
+        #
+        # @example
+        # [
+        #   { :ip_protocol => "TCP",
+        #     :ports => ["201"] }
+        # ]
+        # @return [Array<Hash>]
         attribute :denied
         attribute :description
         attribute :destination_ranges, :aliases => "destinationRanges"
@@ -28,6 +44,10 @@ module Fog
         def save
           requires :identity
 
+          unless self.allowed || self.denied
+            raise Fog::Errors::Error.new("Firewall needs denied or allowed ports specified")
+          end
+
           id.nil? ? create : update
         end
 
@@ -35,7 +55,7 @@ module Fog
           data = service.insert_firewall(identity, attributes)
           operation = Fog::Compute::Google::Operations.new(:service => service)
                                                       .get(data.name)
-          operation.wait_for { !pending? }
+          operation.wait_for { ready? }
           reload
         end
 
@@ -45,7 +65,7 @@ module Fog
           data = service.update_firewall(identity, attributes)
           operation = Fog::Compute::Google::Operations.new(:service => service)
                                                       .get(data.name)
-          operation.wait_for { !pending? }
+          operation.wait_for { ready? }
           reload
         end
 
@@ -55,7 +75,7 @@ module Fog
           data = service.patch_firewall(identity, diff)
           operation = Fog::Compute::Google::Operations.new(:service => service)
                                                       .get(data.name)
-          operation.wait_for { !pending? }
+          operation.wait_for { ready? }
           reload
         end
 

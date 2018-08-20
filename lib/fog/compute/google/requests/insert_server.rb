@@ -50,7 +50,7 @@ module Fog
         #       :disks => [
         #         {
         #           :initialize_params => {
-        #             :source_image => "projects/debian-cloud/global/images/family/debian-8"
+        #             :source_image => "projects/debian-cloud/global/images/family/debian-9"
         #           }
         #         }
         #       ]
@@ -99,7 +99,12 @@ module Fog
           end
 
           if data[:tags]
-            data[:tags] = ::Google::Apis::ComputeV1::Tags.new(options[:tags])
+            if options[:tags].is_a?(Array)
+              # Process classic tag notation, i.e. ["fog"]
+              data[:tags] = ::Google::Apis::ComputeV1::Tags.new({ :items => options[:tags] })
+            else
+              data[:tags] = ::Google::Apis::ComputeV1::Tags.new(options[:tags])
+            end
           end
 
           instance = ::Google::Apis::ComputeV1::Instance.new(data)

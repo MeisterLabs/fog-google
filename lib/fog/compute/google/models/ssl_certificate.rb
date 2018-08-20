@@ -2,7 +2,7 @@ module Fog
   module Compute
     class Google
       ##
-      # Represents a Subnetwork resource
+      # Represents a SslCertificate resource
       #
       # @see https://cloud.google.com/compute/docs/reference/latest/sslCertificates
       class SslCertificate < Fog::Model
@@ -24,7 +24,7 @@ module Fog
           )
           operation = Fog::Compute::Google::Operations.new(:service => service)
                                                       .get(data.name)
-          operation.wait_for { !pending? }
+          operation.wait_for { ready? }
           reload
         end
 

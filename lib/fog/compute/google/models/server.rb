@@ -27,7 +27,7 @@ module Fog
         #   [
         #     {
         #       :initialize_params => {
-        #         :source_image => "projects/debian-cloud/global/images/family/debian-8"
+        #         :source_image => "projects/debian-cloud/global/images/family/debian-9"
         #       }
         #     }
         #   ]
@@ -145,7 +145,7 @@ module Fog
         attribute :tags
 
         # @return [String]
-        attribute :zone
+        attribute :zone, :aliases => :zone_name
 
         GCE_SCOPE_ALIASES = {
           "default" => %w(
@@ -179,6 +179,9 @@ module Fog
           "userinfo-email" => ["https://www.googleapis.com/auth/userinfo.email"]
         }.freeze
 
+        # Return the source image of the server's boot disk
+        #
+        # @return [String] image self link
         def image_name
           boot_disk = disks.first
           unless boot_disk.is_a?(Disk)
@@ -189,6 +192,10 @@ module Fog
           boot_disk.source_image.nil? ? nil : boot_disk.source_image
         end
 
+        # Destroy a server.
+        #
+        # @param async [TrueClass] execute the command asynchronously
+        # @return [Fog::Compute::Google::Operation]
         def destroy(async = true)
           requires :name, :zone
 
@@ -200,6 +207,17 @@ module Fog
           operation
         end
 
+        # Helper method that returns first public ip address needed for
+        # Fog::Compute::Server.ssh default behavior.
+        #
+        # @return [String]
+        def public_ip_address
+          public_ip_addresses.first
+        end
+
+        # Helper method that returns all of server's public ip addresses.
+        #
+        # @return [Array]
         def public_ip_addresses
           addresses = []
           if network_interfaces.respond_to? :flat_map
@@ -215,6 +233,17 @@ module Fog
           addresses
         end
 
+        # Helper method that returns the first private ip address of the
+        # instance.
+        #
+        # @return [String]
+        def private_ip_address
+          private_ip_addresses.first
+        end
+
+        # Helper method that returns all of server's private ip addresses.
+        #
+        # @return [Array]
         def private_ip_addresses
           addresses = []
           if network_interfaces.respond_to? :map
@@ -223,10 +252,21 @@ module Fog
           addresses
         end
 
+        # Helper method that returns all of server's ip addresses,
+        # both private and public.
+        #
+        # @return [Array]
         def addresses
           private_ip_addresses + public_ip_addresses
         end
 
+        # Attach a disk to a running server
+        #
+        # @param disk [Object, String] disk object or a self-link
+        # @param async [TrueClass] execute the api call asynchronously
+        # @param options [Hash]
+        # @return [Object]
+        # TODO: Figure out what options hash is for here.
         def attach_disk(disk, async = true, options = {})
           requires :identity, :zone
 
@@ -244,6 +284,11 @@ module Fog
           reload
         end
 
+        # Detach disk from a running instance
+        #
+        # @param device_name [Object]
+        # @param async [TrueClass]
+        # @returns [Fog::Compute::Google::Server] server object
         def detach_disk(device_name, async = true)
           requires :identity, :zone
 
@@ -256,6 +301,7 @@ module Fog
         end
 
         # Returns metadata items as a Hash.
+        #
         # @return [Hash<String, String>] items
         def metadata_as_h
           if metadata.nil? || metadata[:items].nil? || metadata[:items].empty?
@@ -342,15 +388,25 @@ module Fog
           reload
         end
 
+        # Set an instance metadata
+        #
+        # @param [Bool] async Perform the operation asyncronously
+        # @param [Hash] new_metadata A new metadata object
+        #   Format: {'foo' => 'bar', 'baz'=>'foo'}
+        #
+        # @returns [Fog::Compute::Google::Server] server object
         def set_metadata(new_metadata = {}, async = true)
           requires :identity, :zone
 
-          if new_metadata[:items] && new_metadata[:items].is_a?(Hash)
-            new_metadata[:items] = new_metadata[:items].map { |k, v| { :key => k, :value => v } }
+          unless new_metadata.is_a?(Hash)
+            raise Fog::Errors::Error.new("Instance metadata should be a hash")
           end
 
+          # If metadata is presented in {'foo' => 'bar', 'baz'=>'foo'}
+          new_metadata_items = new_metadata.each.map { |k, v| { :key => k.to_s, :value => v.to_s } }
+
           data = service.set_server_metadata(
-            identity, zone_name, metadata[:fingerprint], new_metadata
+            identity, zone_name, metadata[:fingerprint], new_metadata_items
           )
           operation = Fog::Compute::Google::Operations
                       .new(:service => service)
@@ -372,10 +428,32 @@ module Fog
           reload
         end
 
+        # Check if instance is provisioning. On staging vs. provisioning difference:
+        # https://cloud.google.com/compute/docs/instances/checking-instance-status
+        #
+        # @return [TrueClass or FalseClass]
         def provisioning?
           status == PROVISIONING
         end
 
+        # Check if instance is staging. On staging vs. provisioning difference:
+        # https://cloud.google.com/compute/docs/instances/checking-instance-status
+        #
+        # @return [TrueClass or FalseClass]
+        def staging?
+          status == STAGING
+        end
+
+        # Check if instance is stopped.
+        #
+        # @return [TrueClass or FalseClass]
+        def stopped?
+          status == "TERMINATED"
+        end
+
+        # Check if instance is ready.
+        #
+        # @return [TrueClass or FalseClass]
         def ready?
           status == RUNNING
         end
@@ -421,6 +499,11 @@ module Fog
           requires :disks
           requires :zone
 
+          generate_ssh_key_metadata(self.username, self.public_key) if self.public_key
+
+          # XXX HACK This is a relic of 1.0 change that for some reason added those arguments
+          # to `save` method. This is left in place to keep things backwards-compatible
+          # TODO(2.0): Remove arguments from save
           generate_ssh_key_metadata(username, public_key) if public_key
 
           options = attributes.reject { |_, v| v.nil? }
@@ -449,12 +532,16 @@ module Fog
             ]
           end
 
+          if attributes[:network_ip]
+            options[:network_interfaces][0][:network_ip] = attributes[:network_ip]
+          end
+
           data = service.insert_server(name, zone_name, options)
 
           operation = Fog::Compute::Google::Operations
                       .new(:service => service)
                       .get(data.name, data.zone)
-          operation.wait_for { !pending? }
+          operation.wait_for { ready? }
           reload
         end
 

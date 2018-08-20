@@ -25,7 +25,7 @@ module Fog
           operation = Fog::Compute::Google::Operations
                       .new(:service => service)
                       .get(data.name, nil, data.region)
-          operation.wait_for { !pending? }
+          operation.wait_for { ready? }
           reload
         end
 
@@ -97,6 +97,15 @@ module Fog
         #   behavior returns health checks for all instances associated with
         #   this check.
         # @returns [Hash<String, Array<Hash>>] a map of instance URL to health checks
+        #
+        # Example Hash:
+        # {
+        #   "https://www.googleapis.com/compute/v1/projects/myproject/zones/us-central1-f/instances/myinstance"=>
+        # [{:health_state=>"UNHEALTHY",
+        #   :instance=>"https://www.googleapis.com/compute/v1/projects/myproject/zones/us-central1-f/instances/myinstance"
+        # }]
+        # }
+        #
         def get_health(instance_name = nil)
           requires :identity, :region
 
@@ -104,9 +113,11 @@ module Fog
             instance = service.servers.get(instance_name)
             data = service.get_target_pool_health(identity, region, instance.self_link)
                           .to_h[:health_status] || []
-            results = [instance.self_link, data]
+            results = [[instance.self_link, data]]
           else
             results = instances.map do |self_link|
+              # TODO: Improve the returned object, current is hard to navigate
+              # [{instance => @instance, health_state => "HEALTHY"}, ...]
               data = service.get_target_pool_health(identity, region, self_link)
                             .to_h[:health_status] || []
               [self_link, data]

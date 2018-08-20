@@ -16,8 +16,15 @@ Style/RegexpLiteral:
 Style/FrozenStringLiteralComment:
   Enabled: false
 
+Style/MutableConstant:
+  Enabled: false
+
 Style/HashSyntax:
-  EnforcedStyle: hash_rockets
+  EnforcedStyle: no_mixed_keys
+
+# Do not enforce %i syntax
+Style/SymbolArray:
+  Enabled: false
 
 # HoundCI config
 
@@ -26,7 +33,7 @@ AllCops:
     - "vendor/**/*"
     - "db/schema.rb"
   UseCache: false
-  TargetRubyVersion: 2.1
+  TargetRubyVersion: 2.3
 Style/CollectionMethods:
   Description: Preferred collection methods.
   StyleGuide: https://github.com/bbatsov/ruby-style-guide#map-find-select-reduce-size
@@ -59,7 +66,6 @@ Style/IfUnlessModifier:
   Description: Favor modifier if/unless usage when you have a single-line body.
   StyleGuide: https://github.com/bbatsov/ruby-style-guide#if-as-a-modifier
   Enabled: false
-  MaxLineLength: 80
 Style/OptionHash:
   Description: Don't use option hashes when you can use keyword arguments.
   Enabled: false
@@ -240,9 +246,6 @@ Lint/EachWithObjectArgument:
 Lint/HandleExceptions:
   Description: Don't suppress exception.
   StyleGuide: https://github.com/bbatsov/ruby-style-guide#dont-hide-exceptions
-  Enabled: false
-Lint/LiteralInCondition:
-  Description: Checks of literals used in conditions.
   Enabled: false
 Lint/LiteralInInterpolation:
   Description: Checks for literals used in interpolation.

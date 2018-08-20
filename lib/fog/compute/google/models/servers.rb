@@ -26,6 +26,7 @@ module Fog
           load(data)
         end
 
+        # TODO: This method needs to take self_links as well as names
         def get(identity, zone = nil)
           response = nil
           if zone
@@ -42,9 +43,6 @@ module Fog
         end
 
         def bootstrap(public_key_path: nil, **opts)
-          user = ENV["USER"]
-          public_key = get_public_key(public_key_path)
-
           name = "fog-#{Time.now.to_i}"
           zone_name = "us-central1-f"
 
@@ -52,7 +50,7 @@ module Fog
 
           if disks.nil? || disks.empty?
             # create the persistent boot disk
-            source_img = service.images.get_from_family("debian-8")
+            source_img = service.images.get_from_family("debian-9")
             disk_defaults = {
               :name => name,
               :size_gb => 10,
@@ -65,17 +63,29 @@ module Fog
             disks = [disk]
           end
 
-          data = opts.merge(
-            :name => name,
-            :zone => zone_name,
-            :disks => disks
-          )
+          # TODO: Remove the network init when #360 is fixed
+          network = { :network => "global/networks/default",
+                      :access_configs => [{ :name => "External NAT",
+                                            :type => "ONE_TO_ONE_NAT" }] }
+
+          # Merge the options with the defaults, overwriting defaults
+          # if an option is provided
+          data = { :name => name,
+                   :zone => zone_name,
+                   :disks => disks,
+                   :network_interfaces => [network],
+                   :public_key => get_public_key(public_key_path),
+                   :username => ENV["USER"] }.merge(opts)
+
           data[:machine_type] = "n1-standard-1" unless data[:machine_type]
 
           server = new(data)
-          server.save(:username => user, :public_key => public_key)
-          # TODO: sshable? was removed, needs to be fixed for tests
-          # server.wait_for { sshable? }
+          server.save
+          server.wait_for { ready? }
+
+          # Set the disk to be autodeleted
+          server.set_disk_auto_delete(true)
+
           server
         end
 
@@ -99,7 +109,7 @@ module Fog
           end
 
           if public_key_path.nil? || public_key_path.empty?
-            raise ArgumentError("cannot bootstrap instance without public key file")
+            raise Fog::Errors::Error.new("Cannot bootstrap instance without a public key")
           end
 
           File.read(File.expand_path(public_key_path))
